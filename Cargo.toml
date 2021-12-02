@@ -1,0 +1,22 @@
+[package]
+authors = ["Joel Courtney <joel.e.courtney@gmail.com>"]
+description = "render kroki diagrams from files or code blocks in mdbook"
+edition = "2021"
+keywords = ["mdbook", "proprocessor", "kroki", "diagram"]
+name = "mdbook-kroki-preprocessor"
+readme = "README.md"
+repository = "https://github.com/JoelCourtney/mdbook-kroki-preprocessor"
+version = "0.1.0"
+
+[dependencies]
+anyhow = "*"
+mdbook = "0.4.14"
+pulldown-cmark = "*"
+pulldown-cmark-to-cmark = "*"
+reqwest = "*"
+serde = { version = "*", features = ["derive"] }
+serde_json = "*"
+tokio = "*"
+futures = "*"
+indoc = "*"
+mdbook-preprocessor-boilerplate = { path = "../mdbook-preprocessor-boilerplate" }
