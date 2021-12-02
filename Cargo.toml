@@ -19,4 +19,4 @@ serde_json = "*"
 tokio = "*"
 futures = "*"
 indoc = "*"
-mdbook-preprocessor-boilerplate = { path = "../mdbook-preprocessor-boilerplate" }
+mdbook-preprocessor-boilerplate = "0.1"
