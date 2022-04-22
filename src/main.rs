@@ -241,7 +241,7 @@ fn parse_and_replace(chapter: &mut Chapter, indices: &Vec<usize>) -> Result<Vec<
         }
     });
 
-    cmark(events, &mut buffer, None)?;
+    cmark(events, &mut buffer)?;
 
     *text = buffer;
     Ok(diagrams)
