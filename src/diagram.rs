@@ -14,7 +14,7 @@ pub(crate) struct Diagram {
 }
 
 impl Diagram {
-    pub async fn resolve(self, book: Arc<Mutex<Book>>, src: &PathBuf) -> Result<()> {
+    pub async fn resolve(self, book: Arc<Mutex<Book>>, src: &PathBuf, endpoint: &String) -> Result<()> {
         let request_body = KrokiRequestBody {
             diagram_source: if self.is_path {
                 let mut path = PathBuf::new();
@@ -34,7 +34,7 @@ impl Diagram {
             diagram_type: self.diagram_type,
             output_format: "svg"
         };
-        let svg = get_svg(request_body).await?;
+        let svg = get_svg(request_body, endpoint).await?;
         let mut book_lock = book.lock().await;
         let chapter = get_chapter(&mut book_lock.sections, &self.indices)?;
         chapter.content = chapter.content.replace(&self.replace_text, &svg).to_string();
@@ -64,9 +64,9 @@ fn get_chapter<'a>(mut items: &'a mut Vec<BookItem>, indices: &Vec<usize>) -> Re
     }
 }
 
-async fn get_svg(request_body: KrokiRequestBody) -> Result<String> {
+async fn get_svg(request_body: KrokiRequestBody, endpoint: &String) -> Result<String> {
     let client = reqwest::Client::new();
-    let mut result = client.post("https://kroki.io/")
+    let mut result = client.post(endpoint)
         .body(serde_json::to_string(&request_body)?)
         .send().await?.text().await?;
     let start_index = result.find("<svg").ok_or(anyhow!("didn't find '<svg' in kroki response"))?;

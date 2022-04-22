@@ -6,3 +6,5 @@ src = "src"
 title = "Kroki Preprocessor Example"
 
 [preprocessor.kroki-preprocessor]
+# Example endpoint configuration
+endpoint = "https://kroki.io"

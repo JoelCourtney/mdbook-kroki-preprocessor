@@ -51,6 +51,20 @@ source file, *not* the root of the mdbook.
 The preprocessor will collect all Kroki diagrams of both types, send requests out in parallel
 to the appropriate Kroki API endpoint, and replace their SVG contents back into the markdown.
 
+## Endpoint Configuration
+
+If you'd like to use a self-managed instance of Kroki, you can configure the preprocessor to
+use a different endpoint:
+
+```toml
+[preprocessor.kroki-preprocessor]
+endpoint = "https://myurl.com/"
+```
+
+The preprocessor will add a trailing slash if needed.
+
+This preprocessor has not been tested on any endpoint other than Kroki's free service.
+
 ## Other
 
 This preprocessor only supports HTML rendering.

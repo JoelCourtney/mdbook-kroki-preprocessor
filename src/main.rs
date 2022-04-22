@@ -49,13 +49,27 @@
 //! The preprocessor will collect all Kroki diagrams of both types, send requests out in parallel
 //! to the appropriate Kroki API endpoint, and replace their SVG contents back into the markdown.
 //! 
+//! # Endpoint Configuration
+//! 
+//! If you'd like to use a self-managed instance of Kroki, you can configure the preprocessor to
+//! use a different endpoint:
+//! 
+//! ```toml
+//! [preprocessor.kroki-preprocessor]
+//! endpoint = "https://myurl.com/"
+//! ```
+//! 
+//! The preprocessor will add a trailing slash if needed.
+//!
+//! This preprocessor has not been tested on any endpoint other than Kroki's free service.
+//! 
 //! # Other
 //! 
 //! This preprocessor only supports HTML rendering.
 
 mod diagram;
 
-use anyhow::{Result, anyhow};
+use anyhow::{Result, anyhow, bail};
 use mdbook::preprocess::{Preprocessor, PreprocessorContext};
 use mdbook::book::{Book, BookItem, Chapter};
 use std::sync::Arc;
@@ -79,6 +93,21 @@ impl Preprocessor for KrokiPreprocessor {
     }
 
     fn run(&self, ctx: &PreprocessorContext, mut book: Book) -> Result<Book> {
+        let endpoint = if let Some(config) = ctx.config.get_preprocessor(self.name()) {
+            match config.get("endpoint") {
+                Some(toml::value::Value::String(value)) => {
+                    let mut url = value.clone();
+                    if !url.ends_with("/") {
+                        url.push_str("/");
+                    }
+                    url
+                }
+                None => "https://kroki.io/".to_string(),
+                Some(_) => bail!("endpoint must be a string")
+            }
+        } else {
+            "https://kroki.io/".to_string()
+        };
         let src = &ctx.config.book.src;
 
         let mut index_stack = Vec::new();
@@ -89,7 +118,7 @@ impl Preprocessor for KrokiPreprocessor {
         let runtime = tokio::runtime::Runtime::new()?;
         runtime.block_on(async {
             let results = futures::future::join_all(
-                diagrams.into_iter().map(|diagram| diagram.resolve(book.clone(), src))
+                diagrams.into_iter().map(|diagram| diagram.resolve(book.clone(), src, &endpoint))
             ).await;
             for result in results {
                 result?;
