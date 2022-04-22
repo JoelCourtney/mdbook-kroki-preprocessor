@@ -53,15 +53,16 @@
 //! 
 //! This preprocessor only supports HTML rendering.
 
-use anyhow::{Result, anyhow, bail, Context};
+mod diagram;
+
+use anyhow::{Result, anyhow};
 use mdbook::preprocess::{Preprocessor, PreprocessorContext};
 use mdbook::book::{Book, BookItem, Chapter};
-use serde::Serialize;
 use std::sync::Arc;
 use pulldown_cmark::{Parser, CowStr, Tag, LinkType, Event, CodeBlockKind};
 use pulldown_cmark_to_cmark::cmark;
-use std::path::PathBuf;
 use tokio::sync::Mutex;
+use diagram::Diagram;
 
 fn main() {
     mdbook_preprocessor_boilerplate::run(
@@ -121,86 +122,6 @@ fn extract_diagrams<'a>(items: impl IntoIterator<Item=&'a mut BookItem> + 'a, in
     }
     indices.pop();
     Ok(diagrams)
-}
-
-#[derive(PartialEq,Eq)]
-enum ParserState {
-    InImage,
-    InCode(String),
-    InPre,
-    Out
-}
-
-#[derive(Debug)]
-struct Diagram {
-    diagram_type: String,
-    replace_text: String,
-    indices: Vec<usize>,
-    content: String,
-    is_path: bool
-}
-
-impl Diagram {
-    async fn resolve(self, book: Arc<Mutex<Book>>, src: &PathBuf) -> Result<()> {
-        let request_body = KrokiRequestBody {
-            diagram_source: if self.is_path {
-                let mut path = PathBuf::new();
-                if !self.content.starts_with('/') {
-                    path = src.clone();
-                    let mut book_lock = book.lock().await;
-                    let chapter = get_chapter(&mut book_lock.sections, &self.indices)?;
-                    path.push(chapter.source_path.clone().ok_or(anyhow!("no path for chapter"))?);
-                    std::mem::drop(book_lock);
-                    path.pop();
-                }
-                path.push(self.content);
-                std::fs::read_to_string(path.clone()).context(format!("attempting to read: {:?}", path))?
-            } else {
-                self.content
-            },
-            diagram_type: self.diagram_type,
-            output_format: "svg"
-        };
-        let svg = get_svg(request_body).await?;
-        let mut book_lock = book.lock().await;
-        let chapter = get_chapter(&mut book_lock.sections, &self.indices)?;
-        chapter.content = chapter.content.replace(&self.replace_text, &svg).to_string();
-
-        Ok(())
-    }
-}
-
-fn get_chapter<'a>(mut items: &'a mut Vec<BookItem>, indices: &Vec<usize>) -> Result<&'a mut Chapter> {
-    for index in &indices[..indices.len()-1] {
-        let item = items.into_iter().nth(*index).ok_or(anyhow!("index disappeared"))?;
-        match item {
-            BookItem::Chapter(ref mut chapter) => items = &mut chapter.sub_items,
-            _ => bail!("indexed book item wasn't a chapter")
-        }
-    }
-    match items.into_iter().nth(*indices.last().unwrap()).ok_or(anyhow!("chapter not found"))? {
-        BookItem::Chapter(ref mut chapter) => Ok(chapter),
-        _ => bail!("indexed book item wasn't a chapter")
-    }
-}
-
-async fn get_svg(request_body: KrokiRequestBody) -> Result<String> {
-    let client = reqwest::Client::new();
-    let mut result = client.post("https://kroki.io/")
-        .body(serde_json::to_string(&request_body)?)
-        .send().await?.text().await?;
-    let start_index = result.find("<svg").ok_or(anyhow!("didn't find '<svg' in kroki response"))?;
-    result.replace_range(..start_index, "");
-    result.insert_str(0, "<pre>");
-    result.push_str("</pre>");
-    Ok(result)
-}
-
-#[derive(Serialize, Debug)]
-struct KrokiRequestBody {
-    diagram_source: String,
-    diagram_type: String,
-    output_format: &'static str
 }
 
 /// Listens on the cmark pulldown parser and replaces kroki diagrams
@@ -293,7 +214,10 @@ fn parse_and_replace(chapter: &mut Chapter, indices: &Vec<usize>) -> Result<Vec<
     Ok(diagrams)
 }
 
-
-
-
-
+#[derive(PartialEq,Eq)]
+enum ParserState {
+    InImage,
+    InCode(String),
+    InPre,
+    Out
+}
