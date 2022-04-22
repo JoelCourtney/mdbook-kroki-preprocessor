@@ -10,8 +10,6 @@ use std::sync::Arc;
 use pulldown_cmark::{Parser, CowStr, Tag, LinkType, Event, CodeBlockKind};
 use pulldown_cmark_to_cmark::cmark;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
-use indoc::indoc;
 
 fn main() {
     mdbook_preprocessor_boilerplate::run(
@@ -40,15 +38,13 @@ impl Preprocessor for KrokiPreprocessor {
 
         let runtime = tokio::runtime::Runtime::new()?;
         runtime.block_on(async {
-            let excalidraw_warning = Arc::new(AtomicBool::new(true));
             let results = futures::future::join_all(
-                diagrams.into_iter().map(|diag| diag.resolve(book.clone(), src, excalidraw_warning.clone()))
+                diagrams.into_iter().map(|diag| diag.resolve(book.clone(), src))
             ).await;
             for result in results {
                 result?;
             }
-            let ok: Result<()> = Ok(()); // need the type annotation
-            ok
+            Ok(()) as Result<()>
         })?;
 
         Ok(Arc::try_unwrap(book).map_err(|_| anyhow!("failed to unwrap arc"))?.into_inner()?)
@@ -93,18 +89,7 @@ struct Diagram {
 }
 
 impl Diagram {
-    async fn resolve(self, book: Arc<Mutex<Book>>, src: &PathBuf, excalidraw_warning: Arc<AtomicBool>) -> Result<()> {
-        if self.diagram_type == "excalidraw" && excalidraw_warning.fetch_and(false,Ordering::Relaxed) {
-            eprintln!();
-            eprintln!(indoc! { r#"
-                WARNING: The Excalidraw gateway regularly hangs for a while before returning 504.
-                         If this preprocessor takes more than a few seconds, cancel the build and try again.
-                         The chances of a successful build go down exponentially with the number of
-                         Excalidrawings in your book.
-                         Alternatively, you can export an svg directly from the Excalidraw UI, and include it
-                         with a normal markdown image.
-            "# });
-        }
+    async fn resolve(self, book: Arc<Mutex<Book>>, src: &PathBuf) -> Result<()> {
         let request_body = KrokiRequestBody {
             diagram_source: if self.is_path {
                 let mut path = src.clone();
