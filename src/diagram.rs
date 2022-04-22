@@ -68,8 +68,8 @@ async fn get_svg(request_body: KrokiRequestBody, endpoint: &String) -> Result<St
     let client = reqwest::Client::new();
     let mut result = client.post(endpoint)
         .body(serde_json::to_string(&request_body)?)
-        .send().await?.text().await?;
-    let start_index = result.find("<svg").ok_or(anyhow!("didn't find '<svg' in kroki response"))?;
+        .send().await?.error_for_status()?.text().await?;
+    let start_index = result.find("<svg").ok_or(anyhow!("didn't find '<svg' in kroki response: {}", result))?;
     result.replace_range(..start_index, "");
     result.insert_str(0, "<pre>");
     result.push_str("</pre>");
