@@ -1,15 +1,15 @@
 //! An mdbook preprocessor that lets you embed diagrams from any of [Kroki's](https://kroki.io)
 //! endpoints into your book.
 
-use anyhow::{Result, anyhow, Context};
+use anyhow::{Result, anyhow, bail, Context};
 use mdbook::preprocess::{Preprocessor, PreprocessorContext};
 use mdbook::book::{Book, BookItem, Chapter};
 use serde::Serialize;
-use std::sync::Mutex;
 use std::sync::Arc;
 use pulldown_cmark::{Parser, CowStr, Tag, LinkType, Event, CodeBlockKind};
 use pulldown_cmark_to_cmark::cmark;
 use std::path::PathBuf;
+use tokio::sync::Mutex;
 
 fn main() {
     mdbook_preprocessor_boilerplate::run(
@@ -25,21 +25,18 @@ impl Preprocessor for KrokiPreprocessor {
         "kroki-preprocessor"
     }
 
-    fn run(&self, ctx: &PreprocessorContext, book: Book) -> Result<Book> {
+    fn run(&self, ctx: &PreprocessorContext, mut book: Book) -> Result<Book> {
         let src = &ctx.config.book.src;
 
-        let book = Arc::new(Mutex::new(book));
-        let mut book_lock = book.lock().map_err(|_| anyhow!("cound not lock book in run"))?;
-
         let mut index_stack = Vec::new();
-        let diagrams = extract_diagrams(&mut book_lock.sections, &mut index_stack)?;
+        let diagrams = extract_diagrams(&mut book.sections, &mut index_stack)?;
 
-        std::mem::drop(book_lock);
+        let book = Arc::new(Mutex::new(book));
 
         let runtime = tokio::runtime::Runtime::new()?;
         runtime.block_on(async {
             let results = futures::future::join_all(
-                diagrams.into_iter().map(|diag| diag.resolve(book.clone(), src))
+                diagrams.into_iter().map(|diagram| diagram.resolve(book.clone(), src))
             ).await;
             for result in results {
                 result?;
@@ -47,7 +44,7 @@ impl Preprocessor for KrokiPreprocessor {
             Ok(()) as Result<()>
         })?;
 
-        Ok(Arc::try_unwrap(book).map_err(|_| anyhow!("failed to unwrap arc"))?.into_inner()?)
+        Ok(Arc::try_unwrap(book).map_err(|_| anyhow!("failed to unwrap arc"))?.into_inner())
     }
 
     fn supports_renderer(&self, renderer: &str) -> bool {
@@ -107,7 +104,7 @@ impl Diagram {
             output_format: "svg"
         };
         let svg = get_svg(request_body).await?;
-        let mut book_lock = book.lock().map_err(|_| anyhow!("could not lock book"))?;
+        let mut book_lock = book.lock().await;
         let chapter = get_chapter(&mut book_lock.sections, &self.indices)?;
         chapter.content = chapter.content.replace(&self.replace_text, &svg).to_string();
 
@@ -120,12 +117,12 @@ fn get_chapter<'a>(mut items: &'a mut Vec<BookItem>, indices: &Vec<usize>) -> Re
         let item = items.into_iter().nth(*index).ok_or(anyhow!("index disappeared"))?;
         match item {
             BookItem::Chapter(ref mut chapter) => items = &mut chapter.sub_items,
-            _ => return Err(anyhow!("wasn't a chapter"))
+            _ => bail!("indexed book item wasn't a chapter")
         }
     }
     match items.into_iter().nth(*indices.last().unwrap()).ok_or(anyhow!("chapter not found"))? {
         BookItem::Chapter(ref mut chapter) => Ok(chapter),
-        _ => Err(anyhow!("wasn't a chapter"))
+        _ => bail!("indexed book item wasn't a chapter")
     }
 }
 
@@ -134,7 +131,7 @@ async fn get_svg(request_body: KrokiRequestBody) -> Result<String> {
     let mut result = client.post("https://kroki.io/")
         .body(serde_json::to_string(&request_body)?)
         .send().await?.text().await?;
-    let start_index = result.find("<svg").ok_or(anyhow!("didn't find <svg"))?;
+    let start_index = result.find("<svg").ok_or(anyhow!("didn't find '<svg' in kroki response"))?;
     result.replace_range(..start_index, "");
     result.insert_str(0, "<pre>");
     result.push_str("</pre>");
@@ -158,7 +155,7 @@ fn parse_and_replace(chapter: &mut Chapter, indices: &Vec<usize>) -> Result<Vec<
     let mut diagrams = Vec::new();
 
     let events = Parser::new(text).map(|e| {
-        match e {
+        Ok(match e {
             Event::Html(ref tag) if tag.as_ref() == "<pre>" => {
                 state = ParserState::InPre;
                 e
@@ -224,9 +221,9 @@ fn parse_and_replace(chapter: &mut Chapter, indices: &Vec<usize>) -> Result<Vec<
             }
             e => e
         }
-    });
+    )}).collect::<Result<Vec<Event>>>()?;
 
-    cmark(events, &mut buffer)?;
+    cmark(events.iter(), &mut buffer)?;
 
     *text = buffer;
     Ok(diagrams)
