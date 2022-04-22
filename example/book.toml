@@ -3,6 +3,6 @@ authors = ["Joel Courtney"]
 language = "en"
 multilingual = false
 src = "src"
-title = "example"
+title = "Kroki Preprocessor Example"
 
 [preprocessor.kroki-preprocessor]
