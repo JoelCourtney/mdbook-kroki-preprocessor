@@ -1,7 +1,7 @@
 # mdbook-kroki-preprocessor
 
 An mdbook preprocessor that lets you embed diagrams from any of [Kroki's](https://kroki.io)
-endpoints into your book.
+diagram types into your book.
 
 ## Setup
 
@@ -61,7 +61,7 @@ use a different endpoint:
 endpoint = "https://myurl.com/"
 ```
 
-The preprocessor will add a trailing slash if needed.
+The preprocessor will add a trailing slash if needed. The default is "https://kroki.io/".
 
 This preprocessor has not been tested on any endpoint other than Kroki's free service.
 
