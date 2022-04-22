@@ -58,12 +58,10 @@ use a different endpoint:
 
 ```toml
 [preprocessor.kroki-preprocessor]
-endpoint = "https://myurl.com/"
+endpoint = "http://localhost:8000"
 ```
 
 The preprocessor will add a trailing slash if needed. The default is "https://kroki.io/".
-
-This preprocessor has not been tested on any endpoint other than Kroki's free service.
 
 ## Other
 
