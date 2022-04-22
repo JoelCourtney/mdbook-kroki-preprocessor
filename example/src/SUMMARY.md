@@ -1,5 +1,5 @@
 # Summary
 
 - [Chapter](./chapter.md)
-    - [Subchapter](./subchapters/subchapter.md)
+    - [Excalidraw example](./subchapters/subchapter.md)
 ---

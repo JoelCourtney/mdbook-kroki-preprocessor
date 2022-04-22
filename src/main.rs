@@ -89,12 +89,15 @@ impl Diagram {
     async fn resolve(self, book: Arc<Mutex<Book>>, src: &PathBuf) -> Result<()> {
         let request_body = KrokiRequestBody {
             diagram_source: if self.is_path {
-                let mut path = src.clone();
-                let mut book_lock = book.lock().map_err(|_| anyhow!("could not lock book"))?;
-                let chapter = get_chapter(&mut book_lock.sections, &self.indices)?;
-                path.push(chapter.source_path.clone().ok_or(anyhow!("no path for chapter"))?);
-                std::mem::drop(book_lock);
-                path.pop();
+                let mut path = PathBuf::new();
+                if !self.content.starts_with('/') {
+                    path = src.clone();
+                    let mut book_lock = book.lock().await;
+                    let chapter = get_chapter(&mut book_lock.sections, &self.indices)?;
+                    path.push(chapter.source_path.clone().ok_or(anyhow!("no path for chapter"))?);
+                    std::mem::drop(book_lock);
+                    path.pop();
+                }
                 path.push(self.content);
                 std::fs::read_to_string(path.clone()).context(format!("attempting to read: {:?}", path))?
             } else {
@@ -166,19 +169,22 @@ fn parse_and_replace(chapter: &mut Chapter, indices: &Vec<usize>) -> Result<Vec<
             },
             Event::Start(Tag::Image(LinkType::Inline, ref url, _)) => {
                 if url.starts_with("kroki-") {
-                    let colon_index = url.find("://").expect("didn't find :// after kroki");
-                    let diagram_type = &url[6..colon_index];
-                    let path = &url[colon_index+3..];
+                    if let Some(colon_index) = url.find(":") {
+                        let diagram_type = &url[6..colon_index];
+                        let path = &url[colon_index+1..];
 
-                    state = ParserState::InImage;
-                    diagrams.push(Diagram {
-                        diagram_type: diagram_type.to_string().to_lowercase(),
-                        replace_text: format!("%%kroki-diagram-{}%%", diagrams.len()),
-                        indices: indices.clone(),
-                        content: path.to_string(),
-                        is_path: true
-                    });
-                    Event::Start(Tag::Paragraph)
+                        state = ParserState::InImage;
+                        diagrams.push(Diagram {
+                            diagram_type: diagram_type.to_string().to_lowercase(),
+                            replace_text: format!("%%kroki-diagram-{}%%", diagrams.len()),
+                            indices: indices.clone(),
+                            content: path.to_string(),
+                            is_path: true
+                        });
+                        Event::Start(Tag::Paragraph)
+                    } else {
+                        e
+                    }
                 } else {
                     e
                 }
