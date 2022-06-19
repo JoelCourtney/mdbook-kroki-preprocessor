@@ -71,7 +71,7 @@ use anyhow::{Result, anyhow, bail};
 use mdbook::preprocess::{Preprocessor, PreprocessorContext};
 use mdbook::book::{Book, BookItem, Chapter};
 use std::sync::Arc;
-use pulldown_cmark::{Parser, CowStr, Tag, LinkType, Event, CodeBlockKind};
+use pulldown_cmark::{Parser, CowStr, Tag, LinkType, Event, CodeBlockKind, Options};
 use pulldown_cmark_to_cmark::cmark;
 use tokio::sync::Mutex;
 use diagram::Diagram;
@@ -163,7 +163,7 @@ fn parse_and_replace(chapter: &mut Chapter, indices: &Vec<usize>) -> Result<Vec<
 
     let mut diagrams = Vec::new();
 
-    let events = Parser::new(text).map(|e| {
+    let events = Parser::new_ext(text, Options::all()).map(|e| {
         Ok(match e {
             Event::Html(ref tag) if tag.as_ref() == "<pre>" => {
                 state = ParserState::InPre;
