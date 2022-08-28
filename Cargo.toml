@@ -1,6 +1,6 @@
 [package]
 name = "mdbook-kroki-preprocessor"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["Joel Courtney <joel.e.courtney@gmail.com>"]
 description = "render kroki diagrams from files or code blocks in mdbook"
 edition = "2021"
@@ -11,7 +11,7 @@ license-file = "LICENSE"
 
 [dependencies]
 anyhow = "1.0.58"
-mdbook = { version = "0.4.18", default-features = false }
+mdbook = { version = "0.4.21", default-features = false }
 pulldown-cmark = { version = "0.9.1", default-features = false }
 pulldown-cmark-to-cmark = "10.0.1"
 reqwest = "0.11.11"
