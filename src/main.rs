@@ -181,23 +181,19 @@ fn parse_and_replace(chapter: &mut Chapter, indices: &[usize]) -> Result<Vec<Dia
                     e
                 }
                 Event::Start(Tag::Image(LinkType::Inline, ref url, _)) => {
-                    if url.starts_with("kroki-") {
-                        if let Some(colon_index) = url.find(':') {
-                            let diagram_type = &url[6..colon_index];
-                            let path = &url[colon_index + 1..];
+                    if let (true, Some(colon_index)) = (url.starts_with("kroki-"), url.find(':')) {
+                        let diagram_type = &url[6..colon_index];
+                        let path = &url[colon_index + 1..];
 
-                            state = ParserState::InImage;
-                            diagrams.push(Diagram {
-                                diagram_type: diagram_type.to_string().to_lowercase(),
-                                replace_text: format!("%%kroki-diagram-{}%%", diagrams.len()),
-                                indices: indices.to_owned(),
-                                content: path.to_string(),
-                                is_path: true,
-                            });
-                            Event::Start(Tag::Paragraph)
-                        } else {
-                            e
-                        }
+                        state = ParserState::InImage;
+                        diagrams.push(Diagram {
+                            diagram_type: diagram_type.to_string().to_lowercase(),
+                            replace_text: format!("%%kroki-diagram-{}%%", diagrams.len()),
+                            indices: indices.to_owned(),
+                            content: path.to_string(),
+                            is_path: true,
+                        });
+                        Event::Start(Tag::Paragraph)
                     } else {
                         e
                     }
@@ -223,7 +219,7 @@ fn parse_and_replace(chapter: &mut Chapter, indices: &[usize]) -> Result<Vec<Dia
                     ParserState::InCode(ref diagram_type) => {
                         let replace_text = format!("%%kroki-diagram-{}%%", diagrams.len());
                         diagrams.push(Diagram {
-                            diagram_type: diagram_type.clone().to_lowercase(),
+                            diagram_type: diagram_type.to_lowercase(),
                             replace_text: replace_text.clone(),
                             indices: indices.to_owned(),
                             content: content.to_string(),
