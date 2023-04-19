@@ -10,13 +10,13 @@ repository = "https://github.com/JoelCourtney/mdbook-kroki-preprocessor"
 license-file = "LICENSE"
 
 [dependencies]
-anyhow = "1.0.58"
-mdbook = { version = "0.4.21", default-features = false }
-pulldown-cmark = { version = "0.9.1", default-features = false }
-pulldown-cmark-to-cmark = "10.0.1"
-reqwest = "0.11.11"
-serde = { version = "1.0.137", features = ["derive"] }
-serde_json = "1.0.81"
-tokio = { version = "1.19.2", default-features = false, features = ["rt-multi-thread"] }
-futures = { version = "0.3.21", default-features = false, features = ["std"] }
+anyhow = "1.0.70"
+mdbook = { version = "0.4.28", default-features = false }
+pulldown-cmark = { version = "0.9.2", default-features = false }
+pulldown-cmark-to-cmark = "10.0.4"
+reqwest = "0.11.16"
+serde = { version = "1.0.160", features = ["derive"] }
+serde_json = "1.0.96"
+tokio = { version = "1.27.0", default-features = false, features = ["rt-multi-thread"] }
+futures = { version = "0.3.28", default-features = false, features = ["std"] }
 mdbook-preprocessor-boilerplate = "0.1.1"
