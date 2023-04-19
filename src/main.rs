@@ -215,8 +215,7 @@ fn parse_and_replace(chapter: &mut Chapter, indices: &[usize]) -> Result<Vec<Dia
                 Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(ref lang)))
                     if state != ParserState::InPre =>
                 {
-                    if lang.starts_with("kroki-") {
-                        let diagram_type = &lang[6..];
+                    if let Some(diagram_type) = lang.strip_prefix("kroki-") {
                         state = ParserState::InCode(diagram_type.to_string());
                         Event::Start(Tag::Paragraph)
                     } else {
