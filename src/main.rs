@@ -96,8 +96,8 @@ impl Preprocessor for KrokiPreprocessor {
                 Some(v) => {
                     if let Some(s) = v.as_str() {
                         let mut url = s.to_string();
-                        if !url.ends_with("/") {
-                            url.push_str("/");
+                        if !url.ends_with('/') {
+                            url.push('/');
                         }
                         url
                     } else {
@@ -118,15 +118,12 @@ impl Preprocessor for KrokiPreprocessor {
 
         let runtime = tokio::runtime::Runtime::new()?;
         runtime.block_on(async {
-            let results = futures::future::join_all(
+            futures::future::try_join_all(
                 diagrams
                     .into_iter()
                     .map(|diagram| diagram.resolve(book.clone(), src, &endpoint)),
             )
-            .await;
-            for result in results {
-                result?;
-            }
+            .await?;
             Ok(()) as Result<()>
         })?;
 
@@ -152,7 +149,7 @@ fn extract_diagrams<'a>(
     for (index, item) in items.into_iter().enumerate() {
         if let BookItem::Chapter(ref mut chapter) = item {
             *indices.last_mut().unwrap() = index;
-            diagrams.extend(parse_and_replace(chapter, &indices)?);
+            diagrams.extend(parse_and_replace(chapter, indices)?);
             diagrams.extend(extract_diagrams(&mut chapter.sub_items, indices)?);
         }
     }
@@ -163,7 +160,7 @@ fn extract_diagrams<'a>(
 /// Listens on the cmark pulldown parser and replaces kroki diagrams
 /// in the text with "%%kroki-diagram-N%%", which will be replaced again
 /// later when the diagram is rendered.
-fn parse_and_replace(chapter: &mut Chapter, indices: &Vec<usize>) -> Result<Vec<Diagram>> {
+fn parse_and_replace(chapter: &mut Chapter, indices: &[usize]) -> Result<Vec<Diagram>> {
     let text = &mut chapter.content;
 
     let mut buffer = String::with_capacity(text.len());
@@ -185,7 +182,7 @@ fn parse_and_replace(chapter: &mut Chapter, indices: &Vec<usize>) -> Result<Vec<
                 }
                 Event::Start(Tag::Image(LinkType::Inline, ref url, _)) => {
                     if url.starts_with("kroki-") {
-                        if let Some(colon_index) = url.find(":") {
+                        if let Some(colon_index) = url.find(':') {
                             let diagram_type = &url[6..colon_index];
                             let path = &url[colon_index + 1..];
 
@@ -193,7 +190,7 @@ fn parse_and_replace(chapter: &mut Chapter, indices: &Vec<usize>) -> Result<Vec<
                             diagrams.push(Diagram {
                                 diagram_type: diagram_type.to_string().to_lowercase(),
                                 replace_text: format!("%%kroki-diagram-{}%%", diagrams.len()),
-                                indices: indices.clone(),
+                                indices: indices.to_vec(),
                                 content: path.to_string(),
                                 is_path: true,
                             });
@@ -215,8 +212,7 @@ fn parse_and_replace(chapter: &mut Chapter, indices: &Vec<usize>) -> Result<Vec<
                 Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(ref lang)))
                     if state != ParserState::InPre =>
                 {
-                    if lang.starts_with("kroki-") {
-                        let diagram_type = &lang[6..];
+                    if let Some(diagram_type) = lang.strip_prefix("kroki-") {
                         state = ParserState::InCode(diagram_type.to_string());
                         Event::Start(Tag::Paragraph)
                     } else {
@@ -229,7 +225,7 @@ fn parse_and_replace(chapter: &mut Chapter, indices: &Vec<usize>) -> Result<Vec<
                         diagrams.push(Diagram {
                             diagram_type: diagram_type.clone().to_lowercase(),
                             replace_text: replace_text.clone(),
-                            indices: indices.clone(),
+                            indices: indices.to_vec(),
                             content: content.to_string(),
                             is_path: false,
                         });

@@ -1,7 +1,7 @@
 use anyhow::{anyhow, bail, Context, Result};
 use mdbook::book::{Book, BookItem, Chapter};
 use serde::Serialize;
-use std::{path::PathBuf, sync::Arc};
+use std::{path::Path, path::PathBuf, sync::Arc};
 use tokio::sync::Mutex;
 
 #[derive(Debug)]
@@ -17,14 +17,14 @@ impl Diagram {
     pub async fn resolve(
         self,
         book: Arc<Mutex<Book>>,
-        src: &PathBuf,
+        src: &Path,
         endpoint: &String,
     ) -> Result<()> {
         let request_body = KrokiRequestBody {
             diagram_source: if self.is_path {
                 let mut path = PathBuf::new();
                 if !self.content.starts_with('/') {
-                    path = src.clone();
+                    path = src.to_path_buf();
                     let mut book_lock = book.lock().await;
                     let chapter = get_chapter(&mut book_lock.sections, &self.indices)?;
                     path.push(
@@ -48,10 +48,7 @@ impl Diagram {
         let svg = get_svg(request_body, endpoint).await?;
         let mut book_lock = book.lock().await;
         let chapter = get_chapter(&mut book_lock.sections, &self.indices)?;
-        chapter.content = chapter
-            .content
-            .replace(&self.replace_text, &svg)
-            .to_string();
+        chapter.content = chapter.content.replace(&self.replace_text, &svg);
 
         Ok(())
     }
@@ -69,18 +66,14 @@ fn get_chapter<'a>(
     indices: &Vec<usize>,
 ) -> Result<&'a mut Chapter> {
     for index in &indices[..indices.len() - 1] {
-        let item = items
-            .into_iter()
-            .nth(*index)
-            .ok_or(anyhow!("index disappeared"))?;
+        let item = items.get_mut(*index).ok_or(anyhow!("index disappeared"))?;
         match item {
             BookItem::Chapter(ref mut chapter) => items = &mut chapter.sub_items,
             _ => bail!("indexed book item wasn't a chapter"),
         }
     }
     match items
-        .into_iter()
-        .nth(*indices.last().unwrap())
+        .get_mut(*indices.last().unwrap())
         .ok_or(anyhow!("chapter not found"))?
     {
         BookItem::Chapter(ref mut chapter) => Ok(chapter),
