@@ -93,15 +93,18 @@ impl Preprocessor for KrokiPreprocessor {
     fn run(&self, ctx: &PreprocessorContext, mut book: Book) -> Result<Book> {
         let endpoint = if let Some(config) = ctx.config.get_preprocessor(self.name()) {
             match config.get("endpoint") {
-                Some(toml::value::Value::String(value)) => {
-                    let mut url = value.clone();
-                    if !url.ends_with("/") {
-                        url.push_str("/");
+                Some(v) => {
+                    if let Some(s) = v.as_str() {
+                        let mut url = s.to_string();
+                        if !url.ends_with("/") {
+                            url.push_str("/");
+                        }
+                        url
+                    } else {
+                        bail!("endpoint must be a string")
                     }
-                    url
                 }
                 None => "https://kroki.io/".to_string(),
-                Some(_) => bail!("endpoint must be a string")
             }
         } else {
             "https://kroki.io/".to_string()
