@@ -152,7 +152,7 @@ fn extract_diagrams<'a>(
     for (index, item) in items.into_iter().enumerate() {
         if let BookItem::Chapter(ref mut chapter) = item {
             *indices.last_mut().unwrap() = index;
-            diagrams.extend(parse_and_replace(chapter, &indices)?);
+            diagrams.extend(parse_and_replace(chapter, indices)?);
             diagrams.extend(extract_diagrams(&mut chapter.sub_items, indices)?);
         }
     }
