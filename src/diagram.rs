@@ -66,18 +66,14 @@ fn get_chapter<'a>(
     indices: &Vec<usize>,
 ) -> Result<&'a mut Chapter> {
     for index in &indices[..indices.len() - 1] {
-        let item = items
-            .into_iter()
-            .nth(*index)
-            .ok_or(anyhow!("index disappeared"))?;
+        let item = items.get_mut(*index).ok_or(anyhow!("index disappeared"))?;
         match item {
             BookItem::Chapter(ref mut chapter) => items = &mut chapter.sub_items,
             _ => bail!("indexed book item wasn't a chapter"),
         }
     }
     match items
-        .into_iter()
-        .nth(*indices.last().unwrap())
+        .get_mut(*indices.last().unwrap())
         .ok_or(anyhow!("chapter not found"))?
     {
         BookItem::Chapter(ref mut chapter) => Ok(chapter),
