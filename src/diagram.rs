@@ -1,7 +1,7 @@
 use anyhow::{anyhow, bail, Context, Result};
 use mdbook::book::{Book, BookItem, Chapter};
 use serde::Serialize;
-use std::{path::PathBuf, sync::Arc};
+use std::{path::Path, path::PathBuf, sync::Arc};
 use tokio::sync::Mutex;
 
 #[derive(Debug)]
@@ -17,14 +17,14 @@ impl Diagram {
     pub async fn resolve(
         self,
         book: Arc<Mutex<Book>>,
-        src: &PathBuf,
+        src: &Path,
         endpoint: &String,
     ) -> Result<()> {
         let request_body = KrokiRequestBody {
             diagram_source: if self.is_path {
                 let mut path = PathBuf::new();
                 if !self.content.starts_with('/') {
-                    path = src.clone();
+                    path = src.to_path_buf();
                     let mut book_lock = book.lock().await;
                     let chapter = get_chapter(&mut book_lock.sections, &self.indices)?;
                     path.push(

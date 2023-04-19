@@ -163,7 +163,7 @@ fn extract_diagrams<'a>(
 /// Listens on the cmark pulldown parser and replaces kroki diagrams
 /// in the text with "%%kroki-diagram-N%%", which will be replaced again
 /// later when the diagram is rendered.
-fn parse_and_replace(chapter: &mut Chapter, indices: &Vec<usize>) -> Result<Vec<Diagram>> {
+fn parse_and_replace(chapter: &mut Chapter, indices: &[usize]) -> Result<Vec<Diagram>> {
     let text = &mut chapter.content;
 
     let mut buffer = String::with_capacity(text.len());
@@ -193,7 +193,7 @@ fn parse_and_replace(chapter: &mut Chapter, indices: &Vec<usize>) -> Result<Vec<
                             diagrams.push(Diagram {
                                 diagram_type: diagram_type.to_string().to_lowercase(),
                                 replace_text: format!("%%kroki-diagram-{}%%", diagrams.len()),
-                                indices: indices.clone(),
+                                indices: indices.to_vec(),
                                 content: path.to_string(),
                                 is_path: true,
                             });
@@ -229,7 +229,7 @@ fn parse_and_replace(chapter: &mut Chapter, indices: &Vec<usize>) -> Result<Vec<
                         diagrams.push(Diagram {
                             diagram_type: diagram_type.clone().to_lowercase(),
                             replace_text: replace_text.clone(),
-                            indices: indices.clone(),
+                            indices: indices.to_vec(),
                             content: content.to_string(),
                             is_path: false,
                         });
