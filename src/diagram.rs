@@ -48,10 +48,7 @@ impl Diagram {
         let svg = get_svg(request_body, endpoint).await?;
         let mut book_lock = book.lock().await;
         let chapter = get_chapter(&mut book_lock.sections, &self.indices)?;
-        chapter.content = chapter
-            .content
-            .replace(&self.replace_text, &svg)
-            .to_string();
+        chapter.content = chapter.content.replace(&self.replace_text, &svg);
 
         Ok(())
     }
