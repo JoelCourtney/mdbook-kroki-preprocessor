@@ -96,8 +96,8 @@ impl Preprocessor for KrokiPreprocessor {
                 Some(v) => {
                     if let Some(s) = v.as_str() {
                         let mut url = s.to_string();
-                        if !url.ends_with("/") {
-                            url.push_str("/");
+                        if !url.ends_with('/') {
+                            url.push('/');
                         }
                         url
                     } else {
@@ -185,7 +185,7 @@ fn parse_and_replace(chapter: &mut Chapter, indices: &Vec<usize>) -> Result<Vec<
                 }
                 Event::Start(Tag::Image(LinkType::Inline, ref url, _)) => {
                     if url.starts_with("kroki-") {
-                        if let Some(colon_index) = url.find(":") {
+                        if let Some(colon_index) = url.find(':') {
                             let diagram_type = &url[6..colon_index];
                             let path = &url[colon_index + 1..];
 
