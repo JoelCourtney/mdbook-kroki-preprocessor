@@ -118,15 +118,12 @@ impl Preprocessor for KrokiPreprocessor {
 
         let runtime = tokio::runtime::Runtime::new()?;
         runtime.block_on(async {
-            let results = futures::future::join_all(
+            futures::future::try_join_all(
                 diagrams
                     .into_iter()
                     .map(|diagram| diagram.resolve(book.clone(), src, &endpoint)),
             )
-            .await;
-            for result in results {
-                result?;
-            }
+            .await?;
             Ok(()) as Result<()>
         })?;
 
