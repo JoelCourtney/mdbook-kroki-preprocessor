@@ -67,6 +67,7 @@
 
 mod diagram;
 
+use std::path::PathBuf;
 use anyhow::{Result, anyhow, bail};
 use mdbook::preprocess::{Preprocessor, PreprocessorContext};
 use mdbook::book::{Book, BookItem, Chapter};
@@ -75,6 +76,7 @@ use pulldown_cmark::{Parser, CowStr, Tag, LinkType, Event, CodeBlockKind, Option
 use pulldown_cmark_to_cmark::cmark;
 use tokio::sync::Mutex;
 use diagram::Diagram;
+use crate::diagram::DiagramFormat;
 
 fn main() {
     mdbook_preprocessor_boilerplate::run(
@@ -108,15 +110,14 @@ impl Preprocessor for KrokiPreprocessor {
         };
         let src = &ctx.config.book.src;
 
-        let mut index_stack = Vec::new();
-        let diagrams = extract_diagrams(&mut book.sections, &mut index_stack)?;
+        let diagrams = extract_diagrams(&mut book.sections, ctx.config.build.build_dir.clone())?;
 
         let book = Arc::new(Mutex::new(book));
 
         let runtime = tokio::runtime::Runtime::new()?;
         runtime.block_on(async {
             let results = futures::future::join_all(
-                diagrams.into_iter().map(|diagram| diagram.resolve(book.clone(), src, &endpoint))
+                diagrams.into_iter().map(|diagram| diagram.resolve(src, &endpoint))
             ).await;
             for result in results {
                 result?;
@@ -135,26 +136,23 @@ impl Preprocessor for KrokiPreprocessor {
 /// Recursively scans all chapters for diagrams.
 /// 
 /// Uses `parse_and_replace` to pull out the diagrams.
-fn extract_diagrams<'a>(items: impl IntoIterator<Item=&'a mut BookItem> + 'a, indices: &mut Vec<usize>) -> Result<Vec<Diagram>> {
+fn extract_diagrams<'a>(items: impl IntoIterator<Item=&'a mut BookItem> + 'a, build_dir: PathBuf) -> Result<Vec<Diagram>> {
     let mut diagrams = Vec::new();
-    indices.push(0);
     for (index, item) in items.into_iter().enumerate() {
         if let BookItem::Chapter(ref mut chapter) = item {
-            *indices.last_mut().unwrap() = index;
             diagrams.extend(
-                parse_and_replace(chapter, &indices)?
+                parse_and_replace(chapter, build_dir.clone())?
             );
-            diagrams.extend(extract_diagrams(&mut chapter.sub_items, indices)?);
+            diagrams.extend(extract_diagrams(&mut chapter.sub_items, build_dir.clone())?);
         }
     }
-    indices.pop();
     Ok(diagrams)
 }
 
 /// Listens on the cmark pulldown parser and replaces kroki diagrams
 /// in the text with "%%kroki-diagram-N%%", which will be replaced again
 /// later when the diagram is rendered.
-fn parse_and_replace(chapter: &mut Chapter, indices: &Vec<usize>) -> Result<Vec<Diagram>> {
+fn parse_and_replace(chapter: &mut Chapter, build_dir: PathBuf) -> Result<Vec<Diagram>> {
     let text = &mut chapter.content;
 
     let mut buffer = String::with_capacity(text.len());
@@ -173,21 +171,27 @@ fn parse_and_replace(chapter: &mut Chapter, indices: &Vec<usize>) -> Result<Vec<
                 state = ParserState::Out;
                 e
             },
-            Event::Start(Tag::Image(LinkType::Inline, ref url, _)) => {
+            Event::Start(Tag::Image(LinkType::Inline, ref url, ref title)) => {
                 if url.starts_with("kroki-") {
                     if let Some(colon_index) = url.find(":") {
                         let diagram_type = &url[6..colon_index];
                         let path = &url[colon_index+1..];
 
-                        state = ParserState::InImage;
+                        let diagram_filename = format!("kroki-diagram-{}.svg", diagrams.len());
+
+                        state = ParserState::InImage(diagram_filename.clone());
+
+                        let mut output_path = dbg!(build_dir.clone());
+                        output_path.push(chapter.path.clone().unwrap().with_file_name(diagram_filename.clone()));
                         diagrams.push(Diagram {
                             diagram_type: diagram_type.to_string().to_lowercase(),
-                            replace_text: format!("%%kroki-diagram-{}%%", diagrams.len()),
-                            indices: indices.clone(),
+                            diagram_format: DiagramFormat::default(),
+                            output_path,
+                            chapter_path: chapter.source_path.clone().unwrap(),
                             content: path.to_string(),
                             is_path: true
                         });
-                        Event::Start(Tag::Paragraph)
+                        Event::Start(Tag::Image(LinkType::Inline, CowStr::from(diagram_filename), title.clone()))
                     } else {
                         e
                     }
@@ -195,41 +199,58 @@ fn parse_and_replace(chapter: &mut Chapter, indices: &Vec<usize>) -> Result<Vec<
                     e
                 }
             }
-            Event::Text(_) if state == ParserState::InImage => {
-                Event::Text(CowStr::Boxed(format!("%%kroki-diagram-{}%%", diagrams.len() - 1).into_boxed_str()))
-            }
-            Event::End(Tag::Image(..)) if state == ParserState::InImage => {
-                state = ParserState::Out;
-                Event::End(Tag::Paragraph)
+            Event::End(Tag::Image(..)) => {
+                let result = match state {
+                    ParserState::InImage(ref diagram_filename) => {
+                        Event::End(Tag::Image(LinkType::Inline, CowStr::from(diagram_filename.clone()), CowStr::from("")))
+                    }
+                    _ => e
+                };
+                if let ParserState::InCode(..) = state {
+                    state = ParserState::Out;
+                }
+                result
             }
             Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(ref lang))) if state != ParserState::InPre => {
                 if lang.starts_with("kroki-") {
                     let diagram_type = &lang[6..];
-                    state = ParserState::InCode(diagram_type.to_string());
-                    Event::Start(Tag::Paragraph)
+                    let diagram_filename = format!("kroki-diagram-{}.svg", diagrams.len());
+                    let mut output_path = build_dir.clone();
+                    output_path.push(chapter.path.clone().unwrap().with_file_name(diagram_filename.clone()));
+                    dbg!(&output_path);
+                    state = ParserState::InCode(diagram_type.to_string(), diagram_filename, output_path);
+                    Event::Start(Tag::Image(LinkType::Inline, CowStr::from(""), CowStr::from("")))
                 } else {
                     e
                 }
             }
             Event::Text(content) => {
                 match state {
-                    ParserState::InCode(ref diagram_type) => {
-                        let replace_text = format!("%%kroki-diagram-{}%%", diagrams.len());
+                    ParserState::InCode(ref diagram_type, _, ref output_path) => {
                         diagrams.push(Diagram {
                             diagram_type: diagram_type.clone().to_lowercase(),
-                            replace_text: replace_text.clone(),
-                            indices: indices.clone(),
+                            diagram_format: DiagramFormat::default(),
+                            output_path: output_path.clone(),
+                            chapter_path: chapter.source_path.clone().unwrap(),
                             content: content.to_string(),
-                            is_path: false
+                            is_path: false,
                         });
-                        Event::Text(CowStr::Boxed(replace_text.into_boxed_str()))
+                        Event::Text(CowStr::from(""))
                     }
                     _ => Event::Text(content)
                 }
             }
-            Event::End(Tag::CodeBlock(..)) if matches!(state, ParserState::InCode(..)) => {
-                state = ParserState::Out;
-                Event::End(Tag::Paragraph)
+            e@Event::End(Tag::CodeBlock(..)) => {
+                let result = match state {
+                    ParserState::InCode(_, ref diagram_filename, _) => {
+                        Event::End(Tag::Image(LinkType::Inline, CowStr::from(diagram_filename.clone()), CowStr::from("")))
+                    }
+                    _ => e
+                };
+                if let ParserState::InCode(..) = state {
+                    state = ParserState::Out;
+                }
+                result
             }
             e => e
         }
@@ -243,8 +264,8 @@ fn parse_and_replace(chapter: &mut Chapter, indices: &Vec<usize>) -> Result<Vec<
 
 #[derive(PartialEq,Eq)]
 enum ParserState {
-    InImage,
-    InCode(String),
+    InImage(String),
+    InCode(String, String, PathBuf),
     InPre,
     Out
 }
