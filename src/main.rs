@@ -3,6 +3,7 @@
 mod diagram;
 
 use crate::diagram::{DiagramContent, PathRoot};
+use anyhow::Context;
 use anyhow::{anyhow, bail, Result};
 use diagram::Diagram;
 use mdbook::book::{Book, BookItem, Chapter};
@@ -55,18 +56,21 @@ impl Preprocessor for KrokiPreprocessor {
 
         let book = Arc::new(Mutex::new(book));
 
-        tokio::runtime::Runtime::new()?.block_on(async {
-            futures::future::try_join_all(
-                diagrams
-                    .into_iter()
-                    .map(|diagram| diagram.resolve(ctx, book.clone(), src, &endpoint)),
-            )
-            .await?;
-            Ok(()) as Result<()>
-        })?;
+        tokio::runtime::Runtime::new()
+            .expect("tokio runtime")
+            .block_on(async {
+                futures::future::try_join_all(
+                    diagrams
+                        .into_iter()
+                        .map(|diagram| diagram.resolve(ctx, book.clone(), src, &endpoint)),
+                )
+                .await?;
+                Ok(()) as Result<()>
+            })?;
 
         Ok(Arc::try_unwrap(book)
-            .map_err(|_| anyhow!("failed to unwrap arc"))?
+            .map_err(|_| anyhow!("failed to unwrap arc"))
+            .expect("book arc should only have one reference at end")
             .into_inner())
     }
 
@@ -235,7 +239,8 @@ fn parse_and_replace(chapter: &mut Chapter, indices: &[usize]) -> Result<Vec<Dia
                 e => vec![e],
             })
         })
-        .collect::<Result<Vec<Vec<Event>>>>()?
+        .collect::<Result<Vec<Vec<Event>>>>()
+        .with_context(|| format!("error occurred while processing chapter {} ({:?})", chapter.name, chapter.source_path))?
         .into_iter()
         .flatten();
 

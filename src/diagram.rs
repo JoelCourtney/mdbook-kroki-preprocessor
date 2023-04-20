@@ -1,4 +1,4 @@
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{anyhow, Context, Result};
 use mdbook::book::{Book, BookItem, Chapter};
 use mdbook::preprocess::PreprocessorContext;
 use serde::Serialize;
@@ -90,18 +90,18 @@ fn get_chapter<'a>(
     indices: &Vec<usize>,
 ) -> Result<&'a mut Chapter> {
     for index in &indices[..indices.len() - 1] {
-        let item = items.get_mut(*index).ok_or(anyhow!("index disappeared"))?;
+        let item = items.get_mut(*index).expect("index disappeared");
         match item {
             BookItem::Chapter(ref mut chapter) => items = &mut chapter.sub_items,
-            _ => bail!("indexed book item wasn't a chapter"),
+            _ => panic!("indexed book item wasn't a chapter"),
         }
     }
     match items
         .get_mut(*indices.last().unwrap())
-        .ok_or(anyhow!("chapter not found"))?
+        .expect("chapter not found")
     {
         BookItem::Chapter(ref mut chapter) => Ok(chapter),
-        _ => bail!("indexed book item wasn't a chapter"),
+        _ => panic!("indexed book item wasn't a chapter"),
     }
 }
 
@@ -109,15 +109,16 @@ async fn get_svg(request_body: KrokiRequestBody, endpoint: &String) -> Result<St
     let client = reqwest::Client::new();
     let mut result = client
         .post(endpoint)
-        .body(serde_json::to_string(&request_body)?)
+        .body(serde_json::to_string(&request_body).expect("could no serialize kroki request"))
         .send()
-        .await?
+        .await
+        .expect("could not send kroki request")
         .error_for_status()?
         .text()
         .await?;
     let start_index = result
         .find("<svg")
-        .ok_or(anyhow!("didn't find '<svg' in kroki response: {}", result))?;
+        .unwrap_or_else(|| panic!("didn't find '<svg' in kroki response: {}", result));
     result.replace_range(..start_index, "");
     result.insert_str(0, "<pre>");
     result.push_str("</pre>");
