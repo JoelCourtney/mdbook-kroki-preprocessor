@@ -17,10 +17,7 @@ pub(crate) struct Diagram {
 #[derive(Debug)]
 pub enum DiagramContent {
     Raw(String),
-    Path {
-        kind: PathRoot,
-        path: PathBuf
-    }
+    Path { kind: PathRoot, path: PathBuf },
 }
 
 #[derive(Debug)]
@@ -28,7 +25,7 @@ pub enum PathRoot {
     System,
     Book,
     Source,
-    This
+    This,
 }
 
 impl Diagram {
@@ -49,13 +46,16 @@ impl Diagram {
                     PathRoot::This => {
                         let mut book_lock = book.lock().await;
                         let chapter = get_chapter(&mut book_lock.sections, &self.indices)?;
-                        ctx.root.join(src)
-                            .join(chapter
-                                .source_path
-                                .clone()
-                                .ok_or(anyhow!("no path for chapter"))?
-                                .parent()
-                                .ok_or(anyhow!("chapter path has no parent"))?)
+                        ctx.root
+                            .join(src)
+                            .join(
+                                chapter
+                                    .source_path
+                                    .clone()
+                                    .ok_or(anyhow!("no path for chapter"))?
+                                    .parent()
+                                    .ok_or(anyhow!("chapter path has no parent"))?,
+                            )
                             .join(path)
                     }
                 };
@@ -66,7 +66,7 @@ impl Diagram {
         let request_body = KrokiRequestBody {
             diagram_source,
             diagram_type: self.diagram_type,
-            output_format: self.output_format
+            output_format: self.output_format,
         };
 
         let svg = get_svg(request_body, endpoint).await?;

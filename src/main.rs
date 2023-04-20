@@ -2,6 +2,7 @@
 
 mod diagram;
 
+use crate::diagram::{DiagramContent, PathRoot};
 use anyhow::{anyhow, bail, Result};
 use diagram::Diagram;
 use mdbook::book::{Book, BookItem, Chapter};
@@ -9,10 +10,9 @@ use mdbook::preprocess::{Preprocessor, PreprocessorContext};
 use pulldown_cmark::{CodeBlockKind, CowStr, Event, LinkType, Options, Parser, Tag};
 use pulldown_cmark_to_cmark::cmark;
 use sscanf::sscanf;
+use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use crate::diagram::{DiagramContent, PathRoot};
-use std::path::PathBuf;
 use xmltree::Element;
 
 fn main() {
