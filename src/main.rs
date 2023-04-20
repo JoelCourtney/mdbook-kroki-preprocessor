@@ -73,6 +73,7 @@ use mdbook::book::{Book, BookItem, Chapter};
 use mdbook::preprocess::{Preprocessor, PreprocessorContext};
 use pulldown_cmark::{CodeBlockKind, CowStr, Event, LinkType, Options, Parser, Tag};
 use pulldown_cmark_to_cmark::cmark;
+use sscanf::sscanf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -91,24 +92,24 @@ impl Preprocessor for KrokiPreprocessor {
     }
 
     fn run(&self, ctx: &PreprocessorContext, mut book: Book) -> Result<Book> {
-        let endpoint = if let Some(config) = ctx.config.get_preprocessor(self.name()) {
-            match config.get("endpoint") {
-                Some(v) => {
-                    if let Some(s) = v.as_str() {
-                        let mut url = s.to_string();
-                        if !url.ends_with('/') {
-                            url.push('/');
-                        }
-                        url
-                    } else {
-                        bail!("endpoint must be a string")
-                    }
+        let endpoint = if let Some(v) = ctx
+            .config
+            .get_preprocessor(self.name())
+            .and_then(|config| config.get("endpoint"))
+        {
+            if let Some(s) = v.as_str() {
+                let mut url = s.to_string();
+                if !url.ends_with('/') {
+                    url.push('/');
                 }
-                None => "https://kroki.io/".to_string(),
+                url
+            } else {
+                bail!("endpoint must be a string")
             }
         } else {
             "https://kroki.io/".to_string()
         };
+
         let src = &ctx.config.book.src;
 
         let mut index_stack = Vec::new();
@@ -116,8 +117,7 @@ impl Preprocessor for KrokiPreprocessor {
 
         let book = Arc::new(Mutex::new(book));
 
-        let runtime = tokio::runtime::Runtime::new()?;
-        runtime.block_on(async {
+        tokio::runtime::Runtime::new()?.block_on(async {
             futures::future::try_join_all(
                 diagrams
                     .into_iter()
@@ -181,23 +181,16 @@ fn parse_and_replace(chapter: &mut Chapter, indices: &[usize]) -> Result<Vec<Dia
                     e
                 }
                 Event::Start(Tag::Image(LinkType::Inline, ref url, _)) => {
-                    if url.starts_with("kroki-") {
-                        if let Some(colon_index) = url.find(':') {
-                            let diagram_type = &url[6..colon_index];
-                            let path = &url[colon_index + 1..];
-
-                            state = ParserState::InImage;
-                            diagrams.push(Diagram {
-                                diagram_type: diagram_type.to_string().to_lowercase(),
-                                replace_text: format!("%%kroki-diagram-{}%%", diagrams.len()),
-                                indices: indices.to_vec(),
-                                content: path.to_string(),
-                                is_path: true,
-                            });
-                            Event::Start(Tag::Paragraph)
-                        } else {
-                            e
-                        }
+                    if let Ok((diagram_type, path)) = sscanf!(url, "kroki-{str}:{String}") {
+                        state = ParserState::InImage;
+                        diagrams.push(Diagram {
+                            diagram_type: diagram_type.to_lowercase(),
+                            replace_text: format!("%%kroki-diagram-{}%%", diagrams.len()),
+                            indices: indices.to_vec(),
+                            content: path,
+                            is_path: true,
+                        });
+                        Event::Start(Tag::Paragraph)
                     } else {
                         e
                     }
@@ -212,8 +205,8 @@ fn parse_and_replace(chapter: &mut Chapter, indices: &[usize]) -> Result<Vec<Dia
                 Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(ref lang)))
                     if state != ParserState::InPre =>
                 {
-                    if let Some(diagram_type) = lang.strip_prefix("kroki-") {
-                        state = ParserState::InCode(diagram_type.to_string());
+                    if let Ok(diagram_type) = sscanf!(lang, "kroki-{String}") {
+                        state = ParserState::InCode(diagram_type);
                         Event::Start(Tag::Paragraph)
                     } else {
                         e
