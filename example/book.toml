@@ -5,6 +5,6 @@ multilingual = false
 src = "src"
 title = "Kroki Preprocessor Example"
 
-[preprocessor.kroki-preprocessor]
+[preprocessor.kroki]
 # Example endpoint configuration
 endpoint = "https://kroki.io"

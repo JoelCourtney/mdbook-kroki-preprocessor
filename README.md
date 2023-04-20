@@ -17,7 +17,7 @@ multilingual = false
 src = "src"
 title = "example"
 
-[preprocessor.kroki-preprocessor]
+[preprocessor.kroki]
 ```
 
 ## Usage
@@ -57,7 +57,7 @@ If you'd like to use a self-managed instance of Kroki, you can configure the pre
 use a different endpoint:
 
 ```toml
-[preprocessor.kroki-preprocessor]
+[preprocessor.kroki]
 endpoint = "http://localhost:8000"
 ```
 

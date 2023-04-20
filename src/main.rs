@@ -87,7 +87,7 @@ pub struct KrokiPreprocessor;
 
 impl Preprocessor for KrokiPreprocessor {
     fn name(&self) -> &'static str {
-        "kroki-preprocessor"
+        "kroki"
     }
 
     fn run(&self, ctx: &PreprocessorContext, mut book: Book) -> Result<Book> {
