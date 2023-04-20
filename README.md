@@ -22,7 +22,11 @@ title = "example"
 
 ## Usage
 
-There are two ways to use Kroki in your book. First is a fenced code block:
+There are two ways to use Kroki in your book.
+
+### Fenced code block
+
+You can inline the diagram source into your book with a fenced code block.
 
 ``````markdown
 ```kroki-mermaid
@@ -37,6 +41,28 @@ graph TD
 
 The code block's language has to be `kroki-<diagram type>`.
 
+### `<kroki/>` tag
+
+If the diagram source is too big to inline, you can reference a file using a `<kroki/>` tag. It has
+the following attributes:
+
+- `path`: path to file (required)
+- `root`: where the path extends from (optional). Possible values:
+    - `"system"`: your system's root. Requires `src` to be an absolute path.
+    - `"book"`: the book's root. (directory your `book.toml` is in)
+    - `"source"`: the sources root. (typically `<book root>/src`, but can be configured in `bool.toml`)
+    - `"this"`: the current markdown file. (default if omitted)
+- `type`: diagram type (required)
+
+```md
+<kroki type="plantuml" root="book" path="/assets/my_diagram.plantuml" />
+```
+
+It is recommended to use the self-closing tag syntax `<kroki/>`, but you can use `<kroki></kroki>`
+if you want. Anything between the tags will be ignored.
+
+### `![]()` Image tag
+
 The other method is to use an image tag, for diagrams contents that are too big to put inline
 in the markdown (such as for excalidraw):
 
@@ -46,10 +72,7 @@ in the markdown (such as for excalidraw):
 
 The title field can be anything, but the source field needs to start with `kroki-<diagram type>:`.
 Both relative and absolute paths are supported. Relative paths are relative to the current markdown
-source file, *not* the root of the mdbook.
-
-The preprocessor will collect all Kroki diagrams of both types, send requests out in parallel
-to the appropriate Kroki API endpoint, and replace their SVG contents back into the markdown.
+source file, *not* the root of the mdbook. For better configuration of paths, use the `<kroki/>` tag.
 
 ## Endpoint Configuration
 
@@ -61,7 +84,7 @@ use a different endpoint:
 endpoint = "http://localhost:8000"
 ```
 
-The preprocessor will add a trailing slash if needed. The default is "https://kroki.io/".
+The preprocessor will add a trailing slash if needed. The default is "<https://kroki.io/>".
 
 ## Other
 
