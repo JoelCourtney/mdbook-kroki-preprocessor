@@ -1,5 +1,6 @@
 use anyhow::{anyhow, bail, Context, Result};
 use mdbook::book::{Book, BookItem, Chapter};
+use mdbook::preprocess::PreprocessorContext;
 use serde::Serialize;
 use std::{path::Path, path::PathBuf, sync::Arc};
 use tokio::sync::Mutex;
@@ -7,44 +8,67 @@ use tokio::sync::Mutex;
 #[derive(Debug)]
 pub(crate) struct Diagram {
     pub diagram_type: String,
+    pub output_format: String,
     pub replace_text: String,
     pub indices: Vec<usize>,
-    pub content: String,
-    pub is_path: bool,
+    pub content: DiagramContent,
+}
+
+#[derive(Debug)]
+pub enum DiagramContent {
+    Raw(String),
+    Path {
+        kind: PathRoot,
+        path: PathBuf
+    }
+}
+
+#[derive(Debug)]
+pub enum PathRoot {
+    System,
+    Book,
+    Source,
+    This
 }
 
 impl Diagram {
     pub async fn resolve(
         self,
+        ctx: &PreprocessorContext,
         book: Arc<Mutex<Book>>,
         src: &Path,
         endpoint: &String,
     ) -> Result<()> {
-        let request_body = KrokiRequestBody {
-            diagram_source: if self.is_path {
-                let mut path = PathBuf::new();
-                if !self.content.starts_with('/') {
-                    path = src.to_path_buf();
-                    let mut book_lock = book.lock().await;
-                    let chapter = get_chapter(&mut book_lock.sections, &self.indices)?;
-                    path.push(
-                        chapter
-                            .source_path
-                            .clone()
-                            .ok_or(anyhow!("no path for chapter"))?,
-                    );
-                    std::mem::drop(book_lock);
-                    path.pop();
-                }
-                path.push(self.content);
-                std::fs::read_to_string(path.clone())
-                    .context(format!("attempting to read: {:?}", path))?
-            } else {
-                self.content
-            },
-            diagram_type: self.diagram_type,
-            output_format: "svg",
+        let diagram_source = match self.content {
+            DiagramContent::Raw(s) => s,
+            DiagramContent::Path { kind, path } => {
+                let full_path = match kind {
+                    PathRoot::System => path,
+                    PathRoot::Book => ctx.root.join(path),
+                    PathRoot::Source => ctx.root.join(src).join(path),
+                    PathRoot::This => {
+                        let mut book_lock = book.lock().await;
+                        let chapter = get_chapter(&mut book_lock.sections, &self.indices)?;
+                        ctx.root.join(src)
+                            .join(chapter
+                                .source_path
+                                .clone()
+                                .ok_or(anyhow!("no path for chapter"))?
+                                .parent()
+                                .ok_or(anyhow!("chapter path has no parent"))?)
+                            .join(path)
+                    }
+                };
+                std::fs::read_to_string(&full_path)
+                    .context(format!("attempting to read: {:?}", full_path))?
+            }
         };
+        let request_body = KrokiRequestBody {
+            diagram_source,
+            diagram_type: self.diagram_type,
+            output_format: self.output_format
+        };
+
         let svg = get_svg(request_body, endpoint).await?;
         let mut book_lock = book.lock().await;
         let chapter = get_chapter(&mut book_lock.sections, &self.indices)?;
@@ -58,7 +82,7 @@ impl Diagram {
 struct KrokiRequestBody {
     diagram_source: String,
     diagram_type: String,
-    output_format: &'static str,
+    output_format: String,
 }
 
 fn get_chapter<'a>(
