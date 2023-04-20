@@ -92,24 +92,24 @@ impl Preprocessor for KrokiPreprocessor {
     }
 
     fn run(&self, ctx: &PreprocessorContext, mut book: Book) -> Result<Book> {
-        let endpoint = if let Some(config) = ctx.config.get_preprocessor(self.name()) {
-            match config.get("endpoint") {
-                Some(v) => {
-                    if let Some(s) = v.as_str() {
-                        let mut url = s.to_string();
-                        if !url.ends_with('/') {
-                            url.push('/');
-                        }
-                        url
-                    } else {
-                        bail!("endpoint must be a string")
-                    }
+        let endpoint = if let Some(v) = ctx
+            .config
+            .get_preprocessor(self.name())
+            .and_then(|config| config.get("endpoint"))
+        {
+            if let Some(s) = v.as_str() {
+                let mut url = s.to_string();
+                if !url.ends_with('/') {
+                    url.push('/');
                 }
-                None => "https://kroki.io/".to_string(),
+                url
+            } else {
+                bail!("endpoint must be a string")
             }
         } else {
             "https://kroki.io/".to_string()
         };
+
         let src = &ctx.config.book.src;
 
         let mut index_stack = Vec::new();
@@ -117,8 +117,7 @@ impl Preprocessor for KrokiPreprocessor {
 
         let book = Arc::new(Mutex::new(book));
 
-        let runtime = tokio::runtime::Runtime::new()?;
-        runtime.block_on(async {
+        tokio::runtime::Runtime::new()?.block_on(async {
             futures::future::try_join_all(
                 diagrams
                     .into_iter()
