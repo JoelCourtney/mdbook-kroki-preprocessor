@@ -787,13 +787,14 @@ dependencies = [
  "serde_json",
  "sscanf",
  "tokio",
+ "xmltree",
 ]
 
 [[package]]
 name = "mdbook-preprocessor-boilerplate"
-version = "0.1.1"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9118690be768c307c112211f45812c7fc5fb132352e35cc03e5b6bc0848a76d6"
+checksum = "b701f4b714493948044f46e03b8d4a1b2e0844c5ff65c4214081ee091b680ef6"
 dependencies = [
  "anyhow",
  "clap 2.34.0",
@@ -1837,4 +1838,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "80d0f4e272c85def139476380b12f9ac60926689dd2e01d4923222f40580869d"
 dependencies = [
  "winapi",
+]
+
+[[package]]
+name = "xml-rs"
+version = "0.8.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d2d7d3948613f75c98fd9328cfdcc45acc4d360655289d0a7d4ec931392200a3"
+
+[[package]]
+name = "xmltree"
+version = "0.10.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d7d8a75eaf6557bb84a65ace8609883db44a29951042ada9b393151532e41fcb"
+dependencies = [
+ "xml-rs",
 ]
