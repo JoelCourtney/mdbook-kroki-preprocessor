@@ -103,7 +103,7 @@ fn extract_diagrams<'a>(
 /// in the text with "%%kroki-diagram-N%%", which will be replaced again
 /// later when the diagram is rendered.
 fn parse_and_replace(chapter: &mut Chapter, indices: &[usize]) -> Result<Vec<Diagram>> {
-    let text = &mut chapter.content;
+    let text = &chapter.content;
 
     let mut buffer = String::with_capacity(text.len());
 
@@ -111,8 +111,8 @@ fn parse_and_replace(chapter: &mut Chapter, indices: &[usize]) -> Result<Vec<Dia
 
     let mut diagrams = Vec::new();
 
-    let events = Parser::new_ext(text, Options::all())
-        .map(|e| {
+    let events = Parser::new_ext(text, Options::all()).into_offset_iter()
+        .map(|(e, offset)| {
             Ok(match e {
                 Event::Html(ref tag) if tag.as_ref() == "<pre>" => {
                     state = match state {
@@ -131,13 +131,28 @@ fn parse_and_replace(chapter: &mut Chapter, indices: &[usize]) -> Result<Vec<Dia
                 }
                 _ if matches!(state, ParserState::InPre(_)) => vec![e],
                 Event::Html(ref tag) if tag.as_ref().starts_with("<kroki") => {
-                    let xml = if !tag.contains("/>") {
-                        state = ParserState::InKrokiTag;
-                        tag.to_string() + "</kroki>"
+                    let (xml, closed) = if !tag.contains("/>") {
+                        (tag.to_string() + "</kroki>", false)
                     } else {
-                        tag.to_string()
+                        (tag.to_string(), true)
                     };
                     let element = Element::parse(xml.as_bytes())?;
+                    let diagram_type = element.attributes.get("type").ok_or(anyhow!("missing type tag"))?.clone();
+                    let replace_text = format!("%%kroki-diagram-{}%%", diagrams.len());
+                    let return_value = vec![Event::Text(CowStr::Boxed(replace_text.clone().into_boxed_str()))];
+                    if !element.attributes.contains_key("path") {
+                        if closed {
+                            bail!("kroki tag must either have an inlined diagram or a `path` attribute.");
+                        }
+                        state = ParserState::InKrokiInlineTag {
+                            diagram_type,
+                            content_start: offset.end,
+                            replace_text
+                        };
+                        return Ok(return_value);
+                    } else {
+                        state = ParserState::InKrokiReferenceTag;
+                    }
                     let mut path: PathBuf = element.attributes.get("path")
                         .ok_or(anyhow!("src tag required"))?.parse()?;
                     let path_root = match element.attributes.get("root").map(|s| s.as_str()) {
@@ -167,24 +182,34 @@ fn parse_and_replace(chapter: &mut Chapter, indices: &[usize]) -> Result<Vec<Dia
                         }
                         Some(other) => bail!("unrecognized root type: {other}")
                     };
-                    let diagram_type = element.attributes.get("type").ok_or(anyhow!("missing type tag"))?.clone();
                     let replace_text = format!("%%kroki-diagram-{}%%", diagrams.len());
                     diagrams.push(Diagram {
                         diagram_type,
                         output_format: "svg".to_string(),
-                        replace_text: replace_text.clone(),
+                        replace_text,
                         indices: indices.to_vec(),
                         content: DiagramContent::Path {
-                            kind: path_root,
+                            root: path_root,
                             path
                         }
                     });
-                    vec![Event::Text(CowStr::Boxed(replace_text.into_boxed_str()))]
+                    return_value
                 }
                 Event::Html(ref tag) if tag.contains("</kroki>") => {
+                    if let ParserState::InKrokiInlineTag { ref diagram_type, content_start, ref replace_text } = state {
+                        let content = text[content_start..offset.start].to_string();
+                        diagrams.push(Diagram {
+                            diagram_type: diagram_type.clone(),
+                            output_format: "svg".to_string(),
+                            replace_text: replace_text.clone(),
+                            indices: indices.to_vec(),
+                            content: DiagramContent::Raw(content)
+                        })
+                    }
                     state = ParserState::Out;
                     vec![]
                 }
+                _ if matches!(state, ParserState::InKrokiReferenceTag | ParserState::InKrokiInlineTag {..}) => vec![],
                 Event::Start(Tag::Image(LinkType::Inline, ref url, _)) => {
                     if let Ok((diagram_type, path)) = sscanf!(url, "kroki-{str}:{PathBuf}") {
                         state = ParserState::InImage;
@@ -194,7 +219,7 @@ fn parse_and_replace(chapter: &mut Chapter, indices: &[usize]) -> Result<Vec<Dia
                             replace_text: format!("%%kroki-diagram-{}%%", diagrams.len()),
                             indices: indices.to_vec(),
                             content: DiagramContent::Path {
-                                kind: if path.is_absolute() { PathRoot::System } else { PathRoot::This },
+                                root: if path.is_absolute() { PathRoot::System } else { PathRoot::This },
                                 path
                             },
                         });
@@ -246,14 +271,19 @@ fn parse_and_replace(chapter: &mut Chapter, indices: &[usize]) -> Result<Vec<Dia
 
     cmark(events, &mut buffer)?;
 
-    *text = buffer;
+    chapter.content = buffer;
     Ok(diagrams)
 }
 
 #[derive(PartialEq, Eq)]
 enum ParserState {
     InImage,
-    InKrokiTag,
+    InKrokiReferenceTag,
+    InKrokiInlineTag {
+        diagram_type: String,
+        content_start: usize,
+        replace_text: String,
+    },
     InCode(String),
     InPre(usize),
     Out,

@@ -17,7 +17,7 @@ pub(crate) struct Diagram {
 #[derive(Debug)]
 pub enum DiagramContent {
     Raw(String),
-    Path { kind: PathRoot, path: PathBuf },
+    Path { root: PathRoot, path: PathBuf },
 }
 
 #[derive(Debug)]
@@ -38,8 +38,8 @@ impl Diagram {
     ) -> Result<()> {
         let diagram_source = match self.content {
             DiagramContent::Raw(s) => s,
-            DiagramContent::Path { kind, path } => {
-                let full_path = match kind {
+            DiagramContent::Path { root, path } => {
+                let full_path = match root {
                     PathRoot::System => path,
                     PathRoot::Book => ctx.root.join(path),
                     PathRoot::Source => ctx.root.join(src).join(path),
