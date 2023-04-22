@@ -6,7 +6,8 @@ src = "src"
 title = "Kroki Preprocessor Example"
 
 [preprocessor.kroki-preprocessor]
-# Run the local version
-command = "cargo run --manifest-path ../Cargo.toml"
 # Example endpoint configuration
 endpoint = "https://kroki.io"
+
+# Run the local version. DONT use this line in your real mdbook.
+command = "cargo run --manifest-path ../Cargo.toml"
