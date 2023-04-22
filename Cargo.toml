@@ -1,6 +1,6 @@
 [package]
 name = "mdbook-kroki-preprocessor"
-version = "0.1.2"
+version = "0.2.0"
 authors = ["Joel Courtney <joel.e.courtney@gmail.com>"]
 description = "render kroki diagrams from files or code blocks in mdbook"
 edition = "2021"
