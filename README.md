@@ -25,6 +25,8 @@ title = "example"
 Diagram code can either be inlined in your markdown or referenced in an external file, and both methods can either be
 done with a special `<kroki>` tag or traditional markdown elements. In most cases the `<kroki>` tag is recommended for readability.
 
+For examples inside a real mdbook, see [the example dir](example).
+
 ### `<kroki>` tag
 
 You can inline your code in the `<kroki>` tag like this:

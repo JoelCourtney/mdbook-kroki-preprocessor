@@ -1,6 +1,7 @@
 # Summary
 
-- [Chapter](./chapter.md)
-    - [Excalidraw example](./subchapters/subchapter.md)
-    - [Root relative path example](./subchapters/root-relative-path.md)
+- [Introduction](./intro.md)
+- [Inline diagrams](./inline_diagrams.md)
+- [Referenced diagrams](./referenced_diagrams.md)
+    - [Reference diagram roots](./subchapters/reference_diagram_roots.md)
 ---
