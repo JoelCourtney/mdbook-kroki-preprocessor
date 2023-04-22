@@ -5,7 +5,6 @@ use futures::Future;
 use md_kroki::MdKroki;
 use mdbook::book::{Book, BookItem, Chapter};
 use mdbook::preprocess::{Preprocessor, PreprocessorContext};
-
 use std::path::PathBuf;
 use std::pin::Pin;
 
@@ -78,7 +77,7 @@ impl Preprocessor for KrokiPreprocessor {
                         if path.is_absolute() {
                             bail!(r#"cannot use absolute path without setting `root` attribute to "system", "book", or "source""#);
                         }
-                       book_root
+                        book_root
                             .join(&source_root)
                             .join(
                             chapter_parent_path.as_deref().ok_or_else(|| anyhow!("cannot use local relative file references in chapters with no source path."))?
@@ -116,9 +115,8 @@ impl Preprocessor for KrokiPreprocessor {
     }
 }
 
-/// Recursively scans all chapters for diagrams.
-///
-/// Uses `parse_and_replace` to pull out the diagrams.
+/// Recursively scans all chapters and turns their contents into
+/// rendered file futures.
 fn extract_render_futures<'a>(
     items: impl IntoIterator<Item = &'a mut BookItem> + 'a,
     indices: &mut Vec<usize>,
@@ -129,7 +127,7 @@ fn extract_render_futures<'a>(
     for (index, item) in items.into_iter().enumerate() {
         if let BookItem::Chapter(ref mut chapter) = item {
             let chapter_source = chapter.source_path.clone();
-            let chapter_content = chapter.content.clone();
+            let chapter_content = chapter.content.split_off(0);
             *indices.last_mut().unwrap() = index;
             let indices_clone = indices.clone();
             files.extend(extract_render_futures(
@@ -152,6 +150,7 @@ fn extract_render_futures<'a>(
     files
 }
 
+/// Recovers a mutable reference to a book chapter given a path of indices.
 fn get_chapter<'a>(mut items: &'a mut Vec<BookItem>, indices: &Vec<usize>) -> &'a mut Chapter {
     for index in &indices[..indices.len() - 1] {
         let item = items.get_mut(*index).expect("index disappeared");
@@ -168,6 +167,8 @@ fn get_chapter<'a>(mut items: &'a mut Vec<BookItem>, indices: &Vec<usize>) -> &'
         _ => panic!("indexed book item wasn't a chapter"),
     }
 }
+
+/// The result of rendering a file through kroki.
 struct RenderedFile {
     indices: Vec<usize>,
     content: String,
