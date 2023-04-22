@@ -22,3 +22,4 @@ futures = { version = "0.3.28", default-features = false, features = ["std"] }
 mdbook-preprocessor-boilerplate = "0.1.2"
 sscanf = "0.4.0"
 xmltree = "0.10.3"
+md-kroki = { path = "../md-kroki" }

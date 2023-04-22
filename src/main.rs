@@ -1,20 +1,13 @@
 #![doc = include_str!("../README.md")]
 
-mod diagram;
-
-use crate::diagram::{DiagramContent, PathRoot};
-use anyhow::Context;
 use anyhow::{anyhow, bail, Result};
-use diagram::Diagram;
+use futures::Future;
+use md_kroki::MdKroki;
 use mdbook::book::{Book, BookItem, Chapter};
 use mdbook::preprocess::{Preprocessor, PreprocessorContext};
-use pulldown_cmark::{CodeBlockKind, CowStr, Event, LinkType, Options, Parser, Tag};
-use pulldown_cmark_to_cmark::cmark;
-use sscanf::sscanf;
+
 use std::path::PathBuf;
-use std::sync::Arc;
-use tokio::sync::Mutex;
-use xmltree::Element;
+use std::pin::Pin;
 
 fn main() {
     mdbook_preprocessor_boilerplate::run(
@@ -49,29 +42,73 @@ impl Preprocessor for KrokiPreprocessor {
             "https://kroki.io/".to_string()
         };
 
-        let src = &ctx.config.book.src;
+        let source_root = &ctx.config.book.src;
+        let book_root = ctx.root.clone();
 
-        let mut index_stack = Vec::new();
-        let diagrams = extract_diagrams(&mut book.sections, &mut index_stack)?;
+        let renderer_factory = move |chapter_path: Option<PathBuf>| {
+            let source_root = source_root.clone();
+            let book_root = book_root.clone();
+            let chapter_parent_path = chapter_path.map(|mut p| {
+                p.pop();
+                p
+            });
+            MdKroki::builder()
+            .endpoint(endpoint.clone())
+            .path_and_root_resolver(move |mut path, root: Option<&str>| {
+                let full_path = match root {
+                    Some("system") => {
+                        if path.is_relative() {
+                            bail!("cannot use relative path with root=\"system\"");
+                        }
+                        path
+                    }
+                    Some("book") => {
+                        if path.is_absolute() {
+                            path = path.strip_prefix("/")?.into();
+                        }
+                        book_root.join(path)
+                    }
+                    Some("source" | "src") => {
+                        if path.is_absolute() {
+                            path = path.strip_prefix("/")?.into();
+                        }
+                        book_root.join(&source_root).join(path)
+                    }
+                    None | Some("this" | ".") => {
+                        if path.is_absolute() {
+                            bail!(r#"cannot use absolute path without setting `root` attribute to "system", "book", or "source""#);
+                        }
+                       book_root
+                            .join(&source_root)
+                            .join(
+                            chapter_parent_path.as_deref().ok_or_else(|| anyhow!("cannot use local relative file references in chapters with no source path."))?
+                            )
+                            .join(path)
+                    }
+                    Some(other) => bail!("unrecognized root type: {other}")
+                };
 
-        let book = Arc::new(Mutex::new(book));
+                Ok(std::fs::read_to_string(full_path)?)
+            })
+            .build()
+        };
 
-        tokio::runtime::Runtime::new()
+        let mut index_stack = vec![];
+        let render_futures =
+            extract_render_futures(&mut book.sections, &mut index_stack, &renderer_factory);
+
+        let rendered_files = tokio::runtime::Runtime::new()
             .expect("tokio runtime")
-            .block_on(async {
-                futures::future::try_join_all(
-                    diagrams
-                        .into_iter()
-                        .map(|diagram| diagram.resolve(ctx, book.clone(), src, &endpoint)),
-                )
-                .await?;
-                Ok(()) as Result<()>
-            })?;
+            .block_on(async { futures::future::join_all(render_futures.into_iter()).await })
+            .into_iter()
+            .collect::<Result<Vec<RenderedFile>>>()?;
 
-        Ok(Arc::try_unwrap(book)
-            .map_err(|_| anyhow!("failed to unwrap arc"))
-            .expect("book arc should only have one reference at end")
-            .into_inner())
+        for file in rendered_files {
+            let chapter = get_chapter(&mut book.sections, &file.indices);
+            chapter.content = file.content;
+        }
+
+        Ok(book)
     }
 
     fn supports_renderer(&self, renderer: &str) -> bool {
@@ -82,209 +119,56 @@ impl Preprocessor for KrokiPreprocessor {
 /// Recursively scans all chapters for diagrams.
 ///
 /// Uses `parse_and_replace` to pull out the diagrams.
-fn extract_diagrams<'a>(
+fn extract_render_futures<'a>(
     items: impl IntoIterator<Item = &'a mut BookItem> + 'a,
     indices: &mut Vec<usize>,
-) -> Result<Vec<Diagram>> {
-    let mut diagrams = Vec::new();
+    renderer_factory: &'a impl Fn(Option<PathBuf>) -> MdKroki,
+) -> Vec<Pin<Box<dyn Future<Output = Result<RenderedFile>> + 'a>>> {
+    let mut files = Vec::new();
     indices.push(0);
     for (index, item) in items.into_iter().enumerate() {
         if let BookItem::Chapter(ref mut chapter) = item {
+            let chapter_source = chapter.source_path.clone();
+            let chapter_content = chapter.content.clone();
             *indices.last_mut().unwrap() = index;
-            diagrams.extend(parse_and_replace(chapter, indices)?);
-            diagrams.extend(extract_diagrams(&mut chapter.sub_items, indices)?);
+            let indices_clone = indices.clone();
+            files.extend(extract_render_futures(
+                &mut chapter.sub_items,
+                indices,
+                renderer_factory,
+            ));
+            files.push(Box::pin(async move {
+                let renderer = renderer_factory(chapter_source);
+                let render_future = renderer.render(chapter_content);
+                let new_content = render_future.await?;
+                Ok(RenderedFile {
+                    indices: indices_clone,
+                    content: new_content,
+                })
+            }));
         }
     }
     indices.pop();
-    Ok(diagrams)
+    files
 }
 
-/// Listens on the cmark pulldown parser and replaces kroki diagrams
-/// in the text with "%%kroki-diagram-N%%", which will be replaced again
-/// later when the diagram is rendered.
-fn parse_and_replace(chapter: &mut Chapter, indices: &[usize]) -> Result<Vec<Diagram>> {
-    let text = &chapter.content;
-
-    let mut buffer = String::with_capacity(text.len());
-
-    let mut state = ParserState::Out;
-
-    let mut diagrams = Vec::new();
-
-    let events = Parser::new_ext(text, Options::all()).into_offset_iter()
-        .map(|(e, offset)| {
-            Ok(match e {
-                Event::Html(ref tag) if tag.as_ref() == "<pre>" => {
-                    state = match state {
-                        ParserState::InPre(n) => ParserState::InPre(n+1),
-                        _ => ParserState::InPre(1)
-                    };
-                    vec![e]
-                }
-                Event::Html(ref tag) if tag.as_ref() == "</pre>" => {
-                    match &state {
-                        ParserState::InPre(n@2..) => { state = ParserState::InPre(n-1) }
-                        ParserState::InPre(1) => { state = ParserState::Out }
-                        _ => {}
-                    };
-                    vec![e]
-                }
-                _ if matches!(state, ParserState::InPre(_)) => vec![e],
-                Event::Html(ref tag) if tag.as_ref().starts_with("<kroki") => {
-                    let (xml, closed) = if !tag.contains("/>") {
-                        (tag.to_string() + "</kroki>", false)
-                    } else {
-                        (tag.to_string(), true)
-                    };
-                    let element = Element::parse(xml.as_bytes())?;
-                    let diagram_type = element.attributes.get("type").ok_or(anyhow!("missing type tag"))?.clone();
-                    let replace_text = format!("%%kroki-diagram-{}%%", diagrams.len());
-                    let return_value = vec![Event::Text(CowStr::Boxed(replace_text.clone().into_boxed_str()))];
-                    if !element.attributes.contains_key("path") {
-                        if closed {
-                            bail!("kroki tag must either have an inlined diagram or a `path` attribute.");
-                        }
-                        state = ParserState::InKrokiInlineTag {
-                            diagram_type,
-                            content_start: offset.end,
-                            replace_text
-                        };
-                        return Ok(return_value);
-                    } else {
-                        state = ParserState::InKrokiReferenceTag;
-                    }
-                    let mut path: PathBuf = element.attributes.get("path")
-                        .ok_or(anyhow!("src tag required"))?.parse()?;
-                    let path_root = match element.attributes.get("root").map(|s| s.as_str()) {
-                        Some("system") => {
-                            if path.is_relative() {
-                                bail!("cannot use relative path with root=\"system\"");
-                            }
-                            PathRoot::System
-                        },
-                        Some("book") => {
-                            if path.is_absolute() {
-                                path = path.strip_prefix("/")?.into();
-                            }
-                            PathRoot::Book
-                        },
-                        Some("source" | "src") => {
-                            if path.is_absolute() {
-                                path = path.strip_prefix("/")?.into();
-                            }
-                            PathRoot::Source
-                        },
-                        None | Some("this" | ".") => {
-                            if path.is_absolute() {
-                                bail!(r#"cannot use absolute path without setting `root` attribute to "system", "book", or "source""#);
-                            }
-                            PathRoot::This
-                        }
-                        Some(other) => bail!("unrecognized root type: {other}")
-                    };
-                    let replace_text = format!("%%kroki-diagram-{}%%", diagrams.len());
-                    diagrams.push(Diagram {
-                        diagram_type,
-                        output_format: "svg".to_string(),
-                        replace_text,
-                        indices: indices.to_vec(),
-                        content: DiagramContent::Path {
-                            root: path_root,
-                            path
-                        }
-                    });
-                    return_value
-                }
-                Event::Html(ref tag) if tag.contains("</kroki>") => {
-                    if let ParserState::InKrokiInlineTag { ref diagram_type, content_start, ref replace_text } = state {
-                        let content = text[content_start..offset.start].to_string();
-                        diagrams.push(Diagram {
-                            diagram_type: diagram_type.clone(),
-                            output_format: "svg".to_string(),
-                            replace_text: replace_text.clone(),
-                            indices: indices.to_vec(),
-                            content: DiagramContent::Raw(content)
-                        })
-                    }
-                    state = ParserState::Out;
-                    vec![]
-                }
-                _ if matches!(state, ParserState::InKrokiReferenceTag | ParserState::InKrokiInlineTag {..}) => vec![],
-                Event::Start(Tag::Image(LinkType::Inline, ref url, _)) => {
-                    if let Ok((diagram_type, path)) = sscanf!(url, "kroki-{str}:{PathBuf}") {
-                        state = ParserState::InImage;
-                        diagrams.push(Diagram {
-                            diagram_type: diagram_type.to_lowercase(),
-                            output_format: "svg".to_string(),
-                            replace_text: format!("%%kroki-diagram-{}%%", diagrams.len()),
-                            indices: indices.to_vec(),
-                            content: DiagramContent::Path {
-                                root: if path.is_absolute() { PathRoot::System } else { PathRoot::This },
-                                path
-                            },
-                        });
-                        vec![Event::Start(Tag::Paragraph)]
-                    } else {
-                        vec![e]
-                    }
-                }
-                Event::Text(_) if state == ParserState::InImage => vec![Event::Text(CowStr::Boxed(
-                    format!("%%kroki-diagram-{}%%", diagrams.len() - 1).into_boxed_str(),
-                ))],
-                Event::End(Tag::Image(..)) if state == ParserState::InImage => {
-                    state = ParserState::Out;
-                    vec![Event::End(Tag::Paragraph)]
-                }
-                Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(ref lang))) => {
-                    if let Ok(diagram_type) = sscanf!(lang, "kroki-{String}") {
-                        state = ParserState::InCode(diagram_type);
-                        vec![Event::Start(Tag::Paragraph)]
-                    } else {
-                        vec![e]
-                    }
-                }
-                Event::Text(content) => match state {
-                    ParserState::InCode(ref diagram_type) => {
-                        let replace_text = format!("%%kroki-diagram-{}%%", diagrams.len());
-                        diagrams.push(Diagram {
-                            diagram_type: diagram_type.clone().to_lowercase(),
-                            output_format: "svg".to_string(),
-                            replace_text: replace_text.clone(),
-                            indices: indices.to_vec(),
-                            content: DiagramContent::Raw(content.to_string())
-                        });
-                        vec![Event::Text(CowStr::Boxed(replace_text.into_boxed_str()))]
-                    }
-                    _ => vec![Event::Text(content)],
-                },
-                Event::End(Tag::CodeBlock(..)) if matches!(state, ParserState::InCode(_)) => {
-                    state = ParserState::Out;
-                    vec![Event::End(Tag::Paragraph)]
-                }
-                e => vec![e],
-            })
-        })
-        .collect::<Result<Vec<Vec<Event>>>>()
-        .with_context(|| format!("error occurred while processing chapter {} ({:?})", chapter.name, chapter.source_path))?
-        .into_iter()
-        .flatten();
-
-    cmark(events, &mut buffer)?;
-
-    chapter.content = buffer;
-    Ok(diagrams)
+fn get_chapter<'a>(mut items: &'a mut Vec<BookItem>, indices: &Vec<usize>) -> &'a mut Chapter {
+    for index in &indices[..indices.len() - 1] {
+        let item = items.get_mut(*index).expect("index disappeared");
+        match item {
+            BookItem::Chapter(ref mut chapter) => items = &mut chapter.sub_items,
+            _ => panic!("indexed book item wasn't a chapter"),
+        }
+    }
+    match items
+        .get_mut(*indices.last().unwrap())
+        .expect("chapter not found")
+    {
+        BookItem::Chapter(ref mut chapter) => chapter,
+        _ => panic!("indexed book item wasn't a chapter"),
+    }
 }
-
-#[derive(PartialEq, Eq)]
-enum ParserState {
-    InImage,
-    InKrokiReferenceTag,
-    InKrokiInlineTag {
-        diagram_type: String,
-        content_start: usize,
-        replace_text: String,
-    },
-    InCode(String),
-    InPre(usize),
-    Out,
+struct RenderedFile {
+    indices: Vec<usize>,
+    content: String,
 }
