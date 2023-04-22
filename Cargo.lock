@@ -773,6 +773,8 @@ dependencies = [
 [[package]]
 name = "md-kroki"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "722886f241612dee91cb94e85addddf2a511364a84574d90c536c622ab2ceb5b"
 dependencies = [
  "anyhow",
  "futures",
@@ -819,14 +821,7 @@ dependencies = [
  "md-kroki",
  "mdbook",
  "mdbook-preprocessor-boilerplate",
- "pulldown-cmark",
- "pulldown-cmark-to-cmark",
- "reqwest",
- "serde",
- "serde_json",
- "sscanf",
  "tokio",
- "xmltree",
 ]
 
 [[package]]
@@ -1059,15 +1054,6 @@ dependencies = [
  "bitflags",
  "memchr",
  "unicase",
-]
-
-[[package]]
-name = "pulldown-cmark-to-cmark"
-version = "10.0.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0194e6e1966c23cc5fd988714f85b18d548d773e81965413555d96569931833d"
-dependencies = [
- "pulldown-cmark",
 ]
 
 [[package]]
