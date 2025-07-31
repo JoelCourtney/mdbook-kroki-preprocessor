@@ -1,18 +1,18 @@
 [package]
 name = "mdbook-kroki-preprocessor"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["Joel Courtney <joel.e.courtney@gmail.com>"]
 description = "render kroki diagrams from files or code blocks in mdbook"
-edition = "2021"
+edition = "2024"
 keywords = ["mdbook", "proprocessor", "kroki", "diagram"]
 readme = "README.md"
 repository = "https://github.com/JoelCourtney/mdbook-kroki-preprocessor"
 license-file = "LICENSE"
 
 [dependencies]
-anyhow = "1.0.71"
-mdbook = { version = "0.4.28", default-features = false }
-tokio = { version = "1.28.0", default-features = false, features = ["rt-multi-thread"] }
-futures = { version = "0.3.28", default-features = false, features = ["std"] }
+anyhow = "1.0.98"
+mdbook = { version = "0.4.52", default-features = false }
+tokio = { version = "1.47.0", default-features = false, features = ["rt-multi-thread"] }
+futures = { version = "0.3.31", default-features = false, features = ["std"] }
 mdbook-preprocessor-boilerplate = "0.1.2"
-md-kroki = "0.1.0"
+md-kroki = "0.2.0"

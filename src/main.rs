@@ -1,6 +1,6 @@
 #![doc = include_str!("../README.md")]
 
-use anyhow::{anyhow, bail, Result};
+use anyhow::{Result, anyhow, bail};
 use futures::Future;
 use md_kroki::MdKroki;
 use mdbook::book::{Book, BookItem, Chapter};
@@ -125,7 +125,7 @@ fn extract_render_futures<'a>(
     let mut files = Vec::new();
     indices.push(0);
     for (index, item) in items.into_iter().enumerate() {
-        if let BookItem::Chapter(ref mut chapter) = item {
+        if let BookItem::Chapter(chapter) = item {
             let chapter_source = chapter.source_path.clone();
             let chapter_content = chapter.content.split_off(0);
             *indices.last_mut().unwrap() = index;
@@ -151,11 +151,11 @@ fn extract_render_futures<'a>(
 }
 
 /// Recovers a mutable reference to a book chapter given a path of indices.
-fn get_chapter<'a>(mut items: &'a mut Vec<BookItem>, indices: &Vec<usize>) -> &'a mut Chapter {
+fn get_chapter<'a>(mut items: &'a mut Vec<BookItem>, indices: &[usize]) -> &'a mut Chapter {
     for index in &indices[..indices.len() - 1] {
         let item = items.get_mut(*index).expect("index disappeared");
         match item {
-            BookItem::Chapter(ref mut chapter) => items = &mut chapter.sub_items,
+            BookItem::Chapter(chapter) => items = &mut chapter.sub_items,
             _ => panic!("indexed book item wasn't a chapter"),
         }
     }
@@ -163,7 +163,7 @@ fn get_chapter<'a>(mut items: &'a mut Vec<BookItem>, indices: &Vec<usize>) -> &'
         .get_mut(*indices.last().unwrap())
         .expect("chapter not found")
     {
-        BookItem::Chapter(ref mut chapter) => chapter,
+        BookItem::Chapter(chapter) => chapter,
         _ => panic!("indexed book item wasn't a chapter"),
     }
 }
