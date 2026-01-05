@@ -13,7 +13,6 @@ Then add the preprocessor to your `book.toml`:
 [book]
 authors = ["You"]
 language = "en"
-multilingual = false
 src = "src"
 title = "example"
 

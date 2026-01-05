@@ -11,8 +11,9 @@ license-file = "LICENSE"
 
 [dependencies]
 anyhow = "1.0.98"
-mdbook = { version = "0.4.52", default-features = false }
+mdbook-driver = { version = "0.5.2", default-features = false }
+mdbook-preprocessor = { version = "0.5.2", default-features = false }
 tokio = { version = "1.47.0", default-features = false, features = ["rt-multi-thread"] }
 futures = { version = "0.3.31", default-features = false, features = ["std"] }
-mdbook-preprocessor-boilerplate = "0.1.2"
+mdbook-preprocessor-boilerplate = { git = "https://github.com/kilpkonn/mdbook-preprocessor-boilerplate.git" }
 md-kroki = "0.2.0"

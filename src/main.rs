@@ -3,8 +3,8 @@
 use anyhow::{Result, anyhow, bail};
 use futures::Future;
 use md_kroki::MdKroki;
-use mdbook::book::{Book, BookItem, Chapter};
-use mdbook::preprocess::{Preprocessor, PreprocessorContext};
+use mdbook_driver::book::{Book, BookItem, Chapter};
+use mdbook_preprocessor::{Preprocessor, PreprocessorContext};
 use std::path::PathBuf;
 use std::pin::Pin;
 
@@ -23,20 +23,14 @@ impl Preprocessor for KrokiPreprocessor {
     }
 
     fn run(&self, ctx: &PreprocessorContext, mut book: Book) -> Result<Book> {
-        let endpoint = if let Some(v) = ctx
+        let endpoint = if let Ok(Some(mut url)) = ctx
             .config
-            .get_preprocessor(self.name())
-            .and_then(|config| config.get("endpoint"))
+            .get::<String>(&format!("{}.endpoint", self.name()))
         {
-            if let Some(s) = v.as_str() {
-                let mut url = s.to_string();
-                if !url.ends_with('/') {
-                    url.push('/');
-                }
-                url
-            } else {
-                bail!("endpoint must be a string")
+            if !url.ends_with('/') {
+                url.push('/');
             }
+            url
         } else {
             "https://kroki.io/".to_string()
         };
@@ -94,7 +88,7 @@ impl Preprocessor for KrokiPreprocessor {
 
         let mut index_stack = vec![];
         let render_futures =
-            extract_render_futures(&mut book.sections, &mut index_stack, &renderer_factory);
+            extract_render_futures(&mut book.items, &mut index_stack, &renderer_factory);
 
         let rendered_files = tokio::runtime::Runtime::new()
             .expect("tokio runtime")
@@ -103,15 +97,15 @@ impl Preprocessor for KrokiPreprocessor {
             .collect::<Result<Vec<RenderedFile>>>()?;
 
         for file in rendered_files {
-            let chapter = get_chapter(&mut book.sections, &file.indices);
+            let chapter = get_chapter(&mut book.items, &file.indices);
             chapter.content = file.content;
         }
 
         Ok(book)
     }
 
-    fn supports_renderer(&self, renderer: &str) -> bool {
-        renderer == "html"
+    fn supports_renderer(&self, renderer: &str) -> anyhow::Result<bool> {
+        Ok(renderer == "html")
     }
 }
 
